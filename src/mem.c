@@ -189,6 +189,9 @@ static struct block_header* memalloc( size_t query, struct block_header* heap_st
   else{
     if(!grow_heap(new_block_result.block, query)) return NULL;
     new_block_result = find_good_or_last(new_block_result.block, query);
+    if(new_block_result.type == BSR_FOUND_GOOD_BLOCK){
+      split_if_too_big(new_block_result.block, query);
+    }
     if(new_block_result.type == BSR_CORRUPTED) return NULL;
   }
 
