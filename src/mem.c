@@ -75,13 +75,21 @@ static bool blocks_continuous (
                                struct block_header const* snd ) {
   return (void*)snd == block_after(fst);
 }
-
+/*Проверка, что оба блока пусты*/
 static bool mergeable(struct block_header const* restrict fst, struct block_header const* restrict snd) {
   return fst->is_free && snd->is_free && blocks_continuous( fst, snd ) ;
 }
-
+/*Попытка объединения блока со следующим*/
 static bool try_merge_with_next( struct block_header* block ) {
-  /*  ??? */
+  struct block_header * next_block = block->next;
+  if (next_block && mergeable(block, next_block)){
+    block->next = next_block->next;
+    block->capacity.bytes = block->capacity.bytes +
+                                next_block->capacity.bytes +
+                                offsetof(struct block_header, contents);
+    return true; 
+  }
+  return false;
 }
 
 
@@ -126,9 +134,12 @@ static struct block_header* block_get_header(void* contents) {
   return (struct block_header*) (((uint8_t*)contents)-offsetof(struct block_header, contents));
 }
 
+/* Очистка блока и попытка объединения блока со следующими*/
 void _free( void* mem ) {
   if (!mem) return ;
   struct block_header* header = block_get_header( mem );
   header->is_free = true;
-  /*  ??? */
+  while (header->next){
+    if (!try_merge_with_next(header)) break;
+  }
 }
