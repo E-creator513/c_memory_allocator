@@ -98,10 +98,12 @@ static bool blocks_continuous (
                                struct block_header const* snd ) {
   return (void*)snd == block_after(fst);
 }
+
 /*Проверка, что оба блока пусты*/
 static bool mergeable(struct block_header const* restrict fst, struct block_header const* restrict snd) {
   return fst->is_free && snd->is_free && blocks_continuous( fst, snd ) ;
 }
+
 /*Попытка объединения блока со следующим*/
 static bool try_merge_with_next( struct block_header* block ) {
   struct block_header * next_block = block->next;
@@ -135,31 +137,22 @@ struct block_search_result {
 static struct block_search_result find_good_or_last  ( struct block_header* restrict block, size_t sz )    {
   struct block_header* current_block = block;
 
-  while (current_block->next){
+  do{
+    try_merge_with_all_next(current_block);
     if (current_block->is_free && block_is_big_enough(sz, current_block))
       return (struct block_search_result){.type = BSR_FOUND_GOOD_BLOCK, .block = current_block};
-    
-    if (!try_merge_with_all_next(current_block)){
-      current_block = current_block->next;
-    }
-  }
-  if (current_block->is_free && block_is_big_enough(sz, current_block))
-    return (struct block_search_result){.type = BSR_FOUND_GOOD_BLOCK, .block = current_block};
+    current_block = current_block->next;
+  }while (current_block->next);
   
   return (struct block_search_result){.type = BSR_REACHED_END_NOT_FOUND, .block = current_block};
-
 }
 
 /*  Попробовать выделить память в куче начиная с блока `block` не пытаясь расширить кучу
  Можно переиспользовать как только кучу расширили. */
 static struct block_search_result try_memalloc_existing ( size_t query, struct block_header* block ) {
   struct block_search_result suitable = find_good_or_last(block, query);
-  if (suitable.type == BSR_FOUND_GOOD_BLOCK)
-  {
-    split_if_too_big(suitable.block, query);
-  }
+  if (suitable.type == BSR_FOUND_GOOD_BLOCK)split_if_too_big(suitable.block, query);
   return suitable;
-
 }
 
 
@@ -181,20 +174,11 @@ static struct block_header* memalloc( size_t query, struct block_header* heap_st
   if(query < BLOCK_MIN_CAPACITY) query = BLOCK_MIN_CAPACITY;
 
   struct block_search_result new_block_result = try_memalloc_existing(query, heap_start);
- 
-  if(new_block_result.type == BSR_FOUND_GOOD_BLOCK){
-      split_if_too_big(new_block_result.block, query);
-  }
-  else if(new_block_result.type == BSR_CORRUPTED) return NULL;
-  else{
+  if(new_block_result.type == BSR_REACHED_END_NOT_FOUND){
     if(!grow_heap(new_block_result.block, query)) return NULL;
-    new_block_result = find_good_or_last(new_block_result.block, query);
-    if(new_block_result.type == BSR_FOUND_GOOD_BLOCK){
-      split_if_too_big(new_block_result.block, query);
-    }
-    if(new_block_result.type == BSR_CORRUPTED) return NULL;
+    new_block_result = try_memalloc_existing(query, heap_start);
   }
-
+  if(new_block_result.type == BSR_CORRUPTED) return NULL;
   new_block_result.block->is_free = false;
   return new_block_result.block;
 }
@@ -215,4 +199,11 @@ void _free( void* mem ) {
   struct block_header* header = block_get_header( mem );
   header->is_free = true;
   try_merge_with_all_next(header); 
+}
+
+/* Очистка всей кучи и объединение в один блок*/
+void _free_heap() {
+   for(struct block_header* header = (struct block_header*) HEAP_START; header; header = header->next )
+    _free((struct block_header*) ((uint64_t)header + offsetof(struct block_header, contents)));
+  try_merge_with_all_next((struct block_header*) HEAP_START); 
 }

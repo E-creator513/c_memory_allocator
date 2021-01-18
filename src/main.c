@@ -38,5 +38,11 @@ int main() {
   _malloc(10300);
   _malloc(666);
   debug_heap(stdout, heap);
+
+
+  print_test("Free heap");
+  _free_heap();
+  debug_heap(stdout, heap);
+  
   return 0;
 }
