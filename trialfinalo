@@ -1,0 +1,124 @@
+from flask import Flask, render_template, request, redirect, url_for, send_file, json
+from werkzeug.utils import secure_filename
+import os
+import pdfplumber
+import re
+import pandas as pd
+from subprocess import Popen
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['ALLOWED_EXTENSIONS'] = {'pdf'}
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+def extract_tables_from_pdf(pdf_path):
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            tables = []
+            for page in pdf.pages:
+                page_tables = page.extract_tables()
+                tables.extend(page_tables)
+        return tables
+    except Exception as e:
+        print(f"Error occurred while extracting tables: {e}")
+        return None
+
+
+def extract_relevant_columns_from_pdf(pdf_path, keywords):
+    tables = extract_tables_from_pdf(pdf_path)
+    if tables is None:
+        return []
+
+    relevant_data = []
+    for table in tables:
+        relevant_columns = set()
+        for row in table:
+            for idx, cell in enumerate(row):
+                for keyword in keywords:
+                    if re.search(r'\b' + re.escape(keyword) + r'\b', str(cell), flags=re.IGNORECASE):
+                        relevant_columns.add(idx)
+        if relevant_columns:
+            relevant_table = [[row[col] for col in relevant_columns] for row in table]
+            relevant_data.append(relevant_table)
+    return relevant_data
+
+@app.route('/', methods=['GET', 'POST'])
+def upload_file():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return redirect(request.url)
+        file = request.files['file']
+        if file.filename == '':
+            return redirect(request.url)
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            keywords = ["№", "Товары", "Количество", "Цена", "Сумма"]
+            relevant_tables = extract_relevant_columns_from_pdf(filepath, keywords)
+            if relevant_tables:
+                return render_template('result.html', tables=relevant_tables)
+            else:
+                return "No relevant data found in the PDF."
+    return render_template('upload.html')
+
+
+def save_json_data(data, filename):
+    with open(filename, "w", encoding="utf-8") as json_file:
+        json.dump(data, json_file, ensure_ascii=False, indent=4)
+
+@app.route('/download/<int:index>')
+def download_file(index):
+    filename = f"output_table_{index}.csv"
+    return send_file(filename, as_attachment=True)
+
+def generate_invoices():
+    # Read JSON data
+    with open('invoice_data.json', 'r') as json_file:
+        invoices = json_file.readlines()
+
+    # Process each invoice
+    for index, invoice in enumerate(invoices):
+        invoice_data = json.loads(invoice)
+
+        # Prepare LaTeX content
+        with open('invoice_template.tex', 'r') as template_file:
+            latex_content = template_file.read()
+
+        invoice_number = invoice_data.get('invoiceNumber', '')
+        date = invoice_data.get('date', '')
+        customer = invoice_data.get('customer', '')
+        amount = '{:.2f}'.format(invoice_data.get('amount', 0))
+
+        latex_content = latex_content.replace('{invoiceNumber}', invoice_number)
+        latex_content = latex_content.replace('{date}', date)
+        latex_content = latex_content.replace('{customer}', customer)
+        latex_content = latex_content.replace('{amount}', amount)
+
+        # Write LaTeX content to temporary file
+        temp_file_name = f'temp_invoice_{index}.tex'
+        with open(temp_file_name, 'w') as temp_file:
+            temp_file.write(latex_content)
+
+        # Compile LaTeX file to PDF
+        process = Popen(['pdflatex', temp_file_name])
+        process.communicate()
+
+        # Cleanup temporary files
+        os.unlink(temp_file_name)
+        for extension in ['.aux', '.log', '.pdf']:
+            os.unlink(temp_file_name.replace('.tex', extension))
+
+    return 'Invoices generated successfully!'
+
+@app.route('/download/<int:index>')
+def download_invoice(index):
+    filename = f'temp_invoice_{index}.pdf'
+    return send_file(filename, as_attachment=True)
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
