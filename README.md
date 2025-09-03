@@ -6,7 +6,7 @@
 ### Example of execution 03092025
 ```
 ____________Test ##1 ____________
-Init heap
+Init heap 03092025
   --- Heap ---
      start   capacity   status   contents
  0x4040000      12271     free   0000
