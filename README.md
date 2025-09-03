@@ -3,7 +3,7 @@
 ### Build & run
 - To build you need to type `make` in the root directory.
 - After that to run you need to type `./build/allocator`
-### Example of execution 
+### Example of execution 03092025
 ```
 ____________Test ##1 ____________
 Init heap
