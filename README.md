@@ -53,7 +53,7 @@ The memory is over, the new region of memory expands the old
  0x404561b        666    taken   0000
  0x40458c6      55081     free   0000
 ____________Test ##6 ____________
-Free heap
+Free heapsxa
   --- Heap ---
      start   capacity   status   contents
  0x4040000      77807     free   0000
