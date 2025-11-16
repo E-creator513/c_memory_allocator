@@ -4,7 +4,7 @@
 - To build you need to type `make` in the root directory.
 - After that to run you need to type `./build/allocator`
 ### Example of execution 03092025
-```
+```AZ
 ____________Test ##1 ____________
 Init heap 03092025
   --- Heap ---
